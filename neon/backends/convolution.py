@@ -40,10 +40,12 @@ class KernelGroup(object):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w, bprop=False):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w, bprop=False):
 
         self.params = (N, C, K, D, H, W, T, R, S, M, P, Q,
-                       pad_d, pad_h, pad_w, str_d, str_h, str_w)
+                       pad_d, pad_h, pad_w, str_d, str_h, str_w,
+                       dil_d, dil_h, dil_w)
 
         self.bprop       = bprop
         self.lib         = lib
@@ -98,7 +100,8 @@ class KernelGroup(object):
 
     def __str__(self):
         (N, C, K, D, H, W, T, R, S, M, P, Q,
-        pad_d, pad_h, pad_w, str_d, str_h, str_w) = self.params
+        pad_d, pad_h, pad_w, str_d, str_h, str_w,
+        dil_d, dil_h, dil_w) = self.params
         kernel_name = self.kernel_name
         for opt in self.kernel_opts:
             if type(opt) is not tuple:
@@ -119,10 +122,12 @@ class FpropCuda(KernelGroup):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         super(FpropCuda, self).__init__(lib, dtype, N, C, K, D, H, W, T, R, S, M, P, Q,
-                                        pad_d, pad_h, pad_w, str_d, str_h, str_w)
+                                        pad_d, pad_h, pad_w, str_d, str_h, str_w,
+                                        dil_d, dil_h, dil_w)
 
         from neon.backends.kernels.cuda.convolution import _get_conv_kernel
         self.get_kernel = _get_conv_kernel
@@ -145,6 +150,7 @@ class FpropCuda(KernelGroup):
         block = (8, 8, 1)
         static_kernel_args = _flatten([C, D, H, W, N, T, R, S, K, M, P, Q,
                                        str_w, str_h, pad_w, pad_h,
+                                       dil_w, dil_h,
                                        HWN // 4, KRST // 4, PQN // 4,
                                        PQ, 0, 0,
                                        magic_PQ, magic_Q, magic_S])
@@ -185,11 +191,13 @@ class BpropCuda(KernelGroup):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         super(BpropCuda, self).__init__(lib, dtype,
             N, C, K, D, H, W, T, R, S, M, P, Q,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w, bprop=True)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w, bprop=True)
 
         from neon.backends.kernels.cuda.convolution import _get_conv_kernel
         self.get_kernel = _get_conv_kernel
@@ -213,6 +221,7 @@ class BpropCuda(KernelGroup):
         block = (8, 8, 1)
         static_kernel_args = _flatten([K, M, P, Q, N, T, R, S, C, D, H, W,
                                        str_w, str_h, pad_w, pad_h,
+                                       dil_w, dil_h,
                                        PQN // 4, CRST // 4, HWN // 4,
                                        HW, 0, 0,
                                        magic_HW, magic_W, magic_S])
@@ -258,11 +267,13 @@ class UpdateCuda(KernelGroup):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         super(UpdateCuda, self).__init__(lib, dtype,
             N, C, K, D, H, W, T, R, S, M, P, Q,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w)
 
         from neon.backends.kernels.cuda.convolution import _get_conv_kernel
         self.get_kernel = _get_conv_kernel
@@ -297,6 +308,7 @@ class UpdateCuda(KernelGroup):
         block = (8, 32, 1)
         static_kernel_args = _flatten([C, D, H, W, N, T, R, S, K, M, P, Q,
                                        str_w, str_h, pad_w, pad_h,
+                                       dil_w, dil_h,
                                        HWN // 4, KRST // 4, PQN // 4,
                                        pq_blocks, grid_P, grid_Q,
                                        magic_PQ, magic_Q, magic_S])
@@ -332,11 +344,13 @@ class XpropDirect(KernelGroup):
     def __init__(self, op, lib, dtype,
                  N, C, K, D, H, W, T, R, S, M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w, bprop=False):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w, bprop=False):
 
         super(XpropDirect, self).__init__(lib, dtype,
             N, C, K, D, H, W, T, R, S, M, P, Q,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w, bprop)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w, bprop)
 
         if N % 64 == 0 and K % self.vec_size == 0:
             self.init_largeN(op)
@@ -347,7 +361,7 @@ class XpropDirect(KernelGroup):
     def init_largeN(self, op):
 
         (N, C, K, D, H, W, T, R, S, M, P, Q,
-        pad_d, pad_h, pad_w, str_d, str_h, str_w) = self.params
+        pad_d, pad_h, pad_w, str_d, str_h, str_w, dil_d, dil_h, dil_w) = self.params
 
         for blockN in (128, 64):
             if N % blockN == 0:
@@ -394,7 +408,7 @@ class XpropDirect(KernelGroup):
         self.kernel_args.extend(_flatten([
             N, K, D, H, W, W * N, H * W * N, D * H * W * N,
             C, TRSK, TRS, RS, T, R, S, magic_RS, magic_S,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            pad_d, pad_h, pad_w, str_d, str_h, str_w, dil_d, dil_h, dil_w,
             P2, Q, PQk, Qk, k, magic_PQk, magic_Qk, magic_k,
             Q * N, P * Q * N, M * P * Q * N, gridNw, gridQNw, gridPQNw, gridMPQNw ]))
 
@@ -404,7 +418,7 @@ class XpropDirect(KernelGroup):
     def init_smallN(self, op):
 
         (N, C, K, D, H, W, T, R, S, M, P, Q,
-        pad_d, pad_h, pad_w, str_d, str_h, str_w) = self.params
+        pad_d, pad_h, pad_w, str_d, str_h, str_w, dil_d, dil_h, dil_w) = self.params
 
         assert N % 4 == 0 or N in (1,2), "N dim must be multiple of 4 or equal to 1 or 2"
 
@@ -495,7 +509,7 @@ class XpropDirect(KernelGroup):
         self.kernel_args = [grid, (128,1,1), None, None, None, None, None, None, None, None, None]
         self.kernel_args.extend(_flatten([
             C, D, H, W, N, K, M, P, Q,
-            str_d, str_h, str_w, pad_d, pad_h, pad_w,
+            str_d, str_h, str_w, pad_d, pad_h, pad_w, dil_d, dil_h, dil_w,
             D * H * W * N, H * W * N, W * N, M * P * Q * N, P * Q * N, Q * N,
             PQnk, Qnk, nk, n, k, magic_PQnk, magic_Qnk, magic_nk, magic_k,
             max(K - 32,0), K * 32 * self.dtype.itemsize, TRSK, TRS, RS, S, magic_RS, magic_S,
@@ -551,7 +565,8 @@ class FpropDirect(XpropDirect):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         # The filters may still be in fp32 so we potentially need to dynamically quantize
         if dtype.itemsize != 4:
@@ -562,7 +577,8 @@ class FpropDirect(XpropDirect):
 
         super(FpropDirect, self).__init__("fprop", lib, dtype,
             N, C, K, D, H, W, T, R, S, M, P, Q,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w)
 
 class BpropDirect(XpropDirect):
 
@@ -572,19 +588,21 @@ class BpropDirect(XpropDirect):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         self.filter_trans = FilterDimShuffle(lib, dtype, C, T, R, S, K)
 
         # invert padding
-        pad_d = T - pad_d - 1
-        pad_h = R - pad_h - 1
-        pad_w = S - pad_w - 1
+        pad_d = (T - 1) * dil_d - pad_d
+        pad_h = (R - 1) * dil_h - pad_h
+        pad_w = (S - 1) * dil_w - pad_w
 
         # Swap C<=>K and DHW<=>MPQ
         super(BpropDirect, self).__init__("bprop", lib, dtype,
             N, K, C, M, P, Q, T, R, S, D, H, W,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w, bprop=True)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w, bprop=True)
 
         self.kernel_args.extend(_flatten([
             _magic32(D + T, str_d),
@@ -600,13 +618,15 @@ class UpdateDirect(KernelGroup):
                  T, R, S,
                  M, P, Q,
                  pad_d, pad_h, pad_w,
-                 str_d, str_h, str_w):
+                 str_d, str_h, str_w,
+                 dil_d, dil_h, dil_w):
 
         assert N % 4 == 0, "N dim must be multiple of 4"
 
         super(UpdateDirect, self).__init__(lib, dtype,
             N, C, K, D, H, W, T, R, S, M, P, Q,
-            pad_d, pad_h, pad_w, str_d, str_h, str_w)
+            pad_d, pad_h, pad_w, str_d, str_h, str_w,
+            dil_d, dil_h, dil_w)
 
         SMs = _get_sm_count()
 
@@ -627,7 +647,7 @@ class UpdateDirect(KernelGroup):
     def init(self, autotune=False):
 
         (N, C, K, D, H, W, T, R, S, M, P, Q,
-         pad_d, pad_h, pad_w, str_d, str_h, str_w) = self.params
+         pad_d, pad_h, pad_w, str_d, str_h, str_w, dil_d, dil_h, dil_w) = self.params
 
         for blockN in (32,16,8,4):
             if N % blockN == 0:
@@ -736,7 +756,7 @@ class UpdateDirect(KernelGroup):
         self.kernel_args = [grid, (128,1,1), None, None, None, None, 1.0]
         self.kernel_args.extend(_flatten([
             C, D, H, W, N, K, M, P, Q,
-            str_d, str_h, str_w, pad_d, pad_h, pad_w,
+            str_d, str_h, str_w, pad_d, pad_h, pad_w, dil_d, dil_h, dil_w,
             D * H * W * N, H * W * N, W * N, M * P * Q * N * 16 * itemsize, M * P * Q * N, P * Q * N, Q * N,
             PQkc, Qkc, kc, c, k, magic_PQkc, magic_Qkc, magic_kc, magic_c,
             CTRSK, CTRS, TRS, RS, S, magic_TRS, magic_RS, magic_S,

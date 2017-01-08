@@ -21,6 +21,7 @@ from builtins import object, round, str, zip
 import numpy as np
 import logging
 import time
+import functools
 from neon.backends.backend import Tensor, Backend, OpTreeNode, OpCollection
 from neon.backends.layer_cpu import ConvLayer, DeconvLayer, PoolLayer
 from neon.util.compat import xrange
@@ -345,9 +346,27 @@ class CPUTensor(Tensor):
         if shape == self.shape:
             return self
 
+        try:
+            ary = self._tensor.reshape(shape)
+        except ValueError:
+            def product(vec):
+                return functools.reduce(lambda x, y: x * y, vec)
+
+            raise ValueError((
+                'The total size of a reshaped tensor must be the same as its '
+                'existing size. Tensor is currently shape {current_shape} '
+                'and size {current_size}. Attempted to reshape to '
+                '{reshape_shape} which would be size {reshape_size}.'
+            ).format(
+                current_shape=self._tensor.shape,
+                current_size=product(self._tensor.shape),
+                reshape_shape=shape,
+                reshape_size=product(shape),
+            ))
+
         return self.__class__(
             backend=self.backend,
-            ary=self._tensor.reshape(shape),
+            ary=ary,
             dtype=self._tensor.dtype,
             base=self)
 
@@ -715,9 +734,20 @@ class NervanaCPU(Backend):
             CPUTensor: newly created data structure reference
         """
         dtype = self.default_dtype if dtype is None else dtype
+
+        try:
+            ary = np.zeros(shape, dtype)
+        except ValueError:
+            raise ValueError(
+                'Invalid shape or dtype. shape: {shape} dtype: {dtype}'.format(
+                    shape=shape,
+                    dtype=dtype,
+                )
+            )
+
         return self.tensor_cls(
             backend=self,
-            ary=np.zeros(shape, dtype),
+            ary=ary,
             dtype=dtype,
             name=name,
             persist_values=persist_values)
@@ -1033,7 +1063,8 @@ class NervanaCPU(Backend):
                    D=1, H=1, W=1,
                    T=1, R=1, S=1,
                    pad_d=0, pad_h=0, pad_w=0,
-                   str_d=1, str_h=1, str_w=1):
+                   str_d=1, str_h=1, str_w=1,
+                   dil_d=1, dil_h=1, dil_w=1):
         """
         Create a new ConvLayer parameter object.
         This then is passed as an argument to all the convolution operations.
@@ -1052,6 +1083,7 @@ class NervanaCPU(Backend):
 
         padding: amount of zero-padding around the given edge
         strides: factor to step the filters by in a given direction
+        dilation: dilation factor for each dimension
 
         dtype: need to know dtype to setup proper kernels and params.
 
@@ -1060,7 +1092,8 @@ class NervanaCPU(Backend):
 
         """
         return ConvLayer(self, dtype, N, C, K, D, H, W, T, R, S,
-                         pad_d, pad_h, pad_w, str_d, str_h, str_w)
+                         pad_d, pad_h, pad_w, str_d, str_h, str_w,
+                         dil_d, dil_h, dil_w)
 
     def fprop_conv(self, layer, I, F, O,
                    X=None, bias=None, bsum=None,
@@ -1155,7 +1188,8 @@ class NervanaCPU(Backend):
                      P, Q,
                      R=1, S=1,
                      pad_d=0, pad_h=0, pad_w=0,
-                     str_d=1, str_h=1, str_w=1):
+                     str_d=1, str_h=1, str_w=1,
+                     dil_d=1, dil_h=1, dil_w=1):
         """
         Create a new DeconvLayer parameter object.
         This then is passed as an argument to all the convolution operations.
@@ -1177,11 +1211,13 @@ class NervanaCPU(Backend):
 
         padding: amount of zero-padding around the given edge
         strides: factor to step the filters by in a given direction
+        dilation: dilation factor for each dimension
 
         dtype: need to know dtype to setup proper kernels and params.
         """
         return DeconvLayer(self, dtype, N, C, K, P, Q, R, S,
-                           pad_d, pad_h, pad_w, str_d, str_h, str_w)
+                           pad_d, pad_h, pad_w, str_d, str_h, str_w,
+                           dil_d, dil_h, dil_w)
 
     def lrn_layer(self, dtype, N, C, D=1, H=1, W=1, J=1):
         """

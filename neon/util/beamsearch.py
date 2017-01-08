@@ -25,13 +25,14 @@ class BeamSearch(NervanaObject):
         seq2seq.decoder.switch_mode(inference=True)
         self.z_shape = new_steps if self.hasLUT else (seq2seq.out_shape[0], new_steps)
 
-    def beamsearch(self, inputs, num_beams=5):
+    def beamsearch(self, inputs, num_beams=5, steps=None):
         """
         Perform an fprop path and beam search on a given set of network inputs.
 
         Arguments:
             inputs (Tensor): Minibatch of network inputs
             num_beams (Int): Number of beams (hypothesis) to search over
+            steps (Int): Length of desired output in number of time steps
         """
         self.num_beams = num_beams
 
@@ -39,9 +40,17 @@ class BeamSearch(NervanaObject):
         self.num_dead = 0
 
         # allocate space for outputs, hypotheses and associated scores
-        steps = self.layers.in_shape[1]
+        # default to the number of steps used by this decoder most recently.
+        if steps is None:
+            steps = self.layers.in_shape[1]
+
         bsz = self.be.bsz
+
         self.z_list = [self.be.iobuf(self.z_shape) for _ in range(num_beams)]
+        for i in range(num_beams):
+            if getattr(self.layers.decoder, 'start_index', None) is not None:
+                self.z_list[i][self.layers.decoder.start_index] = 1
+
         self.candidates = [np.zeros((steps, bsz)) for _ in range(num_beams)]
         self.scores = [np.zeros(bsz) for _ in range(num_beams)]
 
@@ -49,10 +58,22 @@ class BeamSearch(NervanaObject):
 
         # encoder
         self.layers.encoder.fprop(inputs, inference=True, beta=0.0)
-        init_state_list = [self.layers.encoder._recurrent[ii].final_state()
-                           if ii is not None else None
-                           for ii in self.layers.decoder_connections]
+        final_states = self.layers.encoder.get_final_states(
+            self.layers.decoder_connections
+        )
 
+        if len(final_states) != len(self.layers.decoder._recurrent):
+            raise ValueError((
+                'number of decoder layers ({num_layers}) does not match '
+                'the number of decoder connections ({num_decoder_connections}).'
+            ).format(
+                num_layers=len(self.layers.decoder._recurrent),
+                num_decoder_connections=len(final_states),
+            ))
+        else:
+            init_state_list = final_states
+
+        # num_beams x num_layers x layer_shape
         self.init_state_lists = [[self.be.zeros_like(rec.h[-1])
                                  for rec in self.layers.decoder._recurrent]
                                  for _ in range(num_beams)]  # TODO: rename
@@ -63,6 +84,8 @@ class BeamSearch(NervanaObject):
             z_beams = [self.be.iobuf(self.layers.decoder.out_shape) for _ in range(self.num_beams)]
         else:
             z_beams = [self.be.iobuf(self.z_shape) for _ in range(self.num_beams)]
+
+        # num_beams x num_layers x layer_shape
         hidden_state_beams = [[self.be.zeros_like(l.final_state())
                                for l in self.layers.decoder._recurrent]
                               for _ in range(self.num_beams)]  # will be list of lists
@@ -94,6 +117,7 @@ class BeamSearch(NervanaObject):
         for isl in init_state_lists:
             init_state_lists_in.append([state.get() for state in isl])
 
+        # num_beams x num_layers x layer_hidden_shape
         init_state_lists_out = [[np.zeros(tnsr.shape) for tnsr in init_state_lists[0]]
                                 for _ in range(len(init_state_lists_in))]
 

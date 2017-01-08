@@ -24,7 +24,7 @@ from neon.transforms import CrossEntropyBinary, Logistic
 from neon.util.persist import load_obj, save_obj, load_class
 from neon.util.modeldesc import ModelDescription
 from neon.layers import Sequential, Activation, Tree, SingleOutputTree, Seq2Seq
-from neon.layers.container import DeltasTree
+from neon.layers.container import DeltasTree, SkipThought
 from neon.util.beamsearch import BeamSearch
 import numpy as np
 
@@ -73,6 +73,10 @@ class Model(NervanaObject):
             # Wrap the list of layers in a Sequential container if a raw list of layers
             if type(layers) in (Sequential, Tree, SingleOutputTree, Seq2Seq):
                 self.layers = layers
+            elif type(layers) == SkipThought:
+                self.layers = layers
+                if hasattr(layers, 'layer_dict'):
+                    self.layer_dict = layers.layer_dict
             else:
                 self.layers = Sequential(layers)
         self.layers.propagate_parallelism("Data")
@@ -306,13 +310,14 @@ class Model(NervanaObject):
 
         return Ypred[:dataset.ndata]
 
-    def get_outputs_beam(self, dataset, num_beams=0):
+    def get_outputs_beam(self, dataset, num_beams=0, steps=None):
         """
         Get the activation outputs of the final model layer for the dataset
 
         Arguments:
             dataset (NervanaDataIterator) Dataset iterator to perform fit on
             num_beams (int, optional) Nonzero to use beamsearch for sequence to sequence models
+            steps (Int): Length of desired output in number of time steps
 
         Returns:
             Host numpy array: the output of the final layer for the entire Dataset
@@ -328,7 +333,7 @@ class Model(NervanaObject):
         logger.info('Performing beam search with ' + str(num_beams) + ' beams')
         for idx, (x, t) in enumerate(dataset):
             if num_beams > 0:
-                x = beamsearch.beamsearch(x, num_beams)
+                x = beamsearch.beamsearch(x, num_beams, steps=steps)
             else:
                 x = self.fprop(x, inference=True)
             if Ypred is None:
@@ -496,7 +501,12 @@ class Model(NervanaObject):
         pdict = self.get_description(get_weights=True, keep_states=keep_states)
         pdict['epoch_index'] = self.epoch_index + 1
         if self.initialized:
-            pdict['train_input_shape'] = self.layers.in_shape
+            if not hasattr(self.layers, 'decoder'):
+                pdict['train_input_shape'] = self.layers.in_shape
+            else:
+                # serialize shapes both for encoder and decoder
+                pdict['train_input_shape'] = (self.layers.encoder.in_shape +
+                                              self.layers.decoder.in_shape)
         if fn is not None:
             save_obj(pdict, fn)
             return
