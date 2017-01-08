@@ -25,7 +25,7 @@ python compare.py -e1 -r0 -bcpu -w <place where data lives>
 
 """
 from __future__ import print_function
-from builtins import range, str, zip
+from builtins import str, zip
 import os
 import numpy as np
 from neon.data import ArrayIterator
@@ -36,6 +36,7 @@ from neon.optimizers import GradientDescentMomentum
 from neon.transforms import Misclassification, Rectlin, Softmax, CrossEntropyMulti
 from neon.callbacks.callbacks import Callbacks
 from neon.util.argparser import NeonArgparser
+from neon.util.compat import range
 from neon.data import load_cifar10
 from neon.data import ImageLoader, DataLoader, ImageParams
 from PIL import Image

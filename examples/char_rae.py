@@ -26,7 +26,6 @@ Usage:
 
 """
 from builtins import str
-from builtins import range
 
 from neon.backends import gen_backend
 from neon.data import PTB
@@ -37,6 +36,7 @@ from neon.optimizers import RMSProp
 from neon.transforms import Tanh, Logistic, Softmax, CrossEntropyMulti, Misclassification
 from neon.callbacks.callbacks import Callbacks
 from neon.util.argparser import NeonArgparser, extract_valid_args
+from neon.util.compat import range
 from neon import logger as neon_logger
 
 import numpy as np

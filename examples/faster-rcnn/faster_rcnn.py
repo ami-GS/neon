@@ -17,6 +17,7 @@ from neon.transforms import Rectlin, Identity, Softmax, PixelwiseSoftmax
 from neon.layers import Conv, Affine, BranchNode, Tree, Dropout, RoiPooling
 from neon.models import Model
 from neon.data.dataloader_transformers import BGRMeanSubtract, TypeCast
+from neon.util.compat import range
 from aeon import DataLoader
 from proposal_layer import ProposalLayer
 from objectlocalization import ObjectLocalization
