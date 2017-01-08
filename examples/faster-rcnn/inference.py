@@ -29,13 +29,12 @@ The mAP evaluation script is adapted from:
 https://github.com/rbgirshick/py-faster-rcnn/
 """
 
-from builtins import range
-
 import util
 from objectlocalization import PASCALVOC
 from neon.backends import gen_backend
 from neon.util.persist import get_data_cache_dir, save_obj
 from neon.util.argparser import NeonArgparser, extract_valid_args
+from neon.util.compat import range
 from neon import logger as neon_logger
 from voc_eval import voc_eval
 import numpy as np

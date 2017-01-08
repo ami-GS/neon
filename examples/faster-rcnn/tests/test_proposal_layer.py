@@ -21,12 +21,12 @@ proposal_target_layer_ref.py
 
 """
 from __future__ import division
-from builtins import range
 from builtins import object
 import numpy as np
 import itertools as itt
 
 from neon.backends import gen_backend
+from neon.util.compat import range
 
 from proposal_layer_ref import PyCaffeProposalLayer
 from proposal_target_layer_ref import PyCaffeProposalTargetLayer

@@ -13,9 +13,10 @@
 # limitations under the License.
 # ----------------------------------------------------------------------------
 from __future__ import division
-from builtins import range, zip
+from builtins import zip
 import numpy as np
 from neon.layers.layer import ParameterLayer, Layer
+from neon.util.compat import range
 
 
 def get_steps(x, shape):
