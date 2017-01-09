@@ -1270,6 +1270,7 @@ class NervanaCPU(Backend):
         K, M, P, Q, N = layer.dimO
         pad_c, pad_d, pad_h, pad_w = layer.padding
         str_c, str_d, str_h, str_w = layer.strides
+        _ascale = ascale / J
 
         array_I = I._tensor.reshape(layer.dimI)
         array_O = O._tensor.reshape(layer.dimO)  # _tensor to write to
@@ -1278,7 +1279,6 @@ class NervanaCPU(Backend):
 
         for k in range(K):
             sliceC, _ = layer.kSlice[k]
-            _ascale = ascale / J
             for m in range(M):
                 sliceD, _ = layer.mSlice[m]
                 for p in range(P):
