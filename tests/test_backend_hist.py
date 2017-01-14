@@ -87,19 +87,7 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("nbin_offset_dim_dtype_inp", fargs)
 
 
-@pytest.mark.hasgpu
-def test_edge_cases(backend_pair):
-    """
-    Test several edge cases related to min/max bin, and rounding.
-
-    Also test backend dump_hist_data functionality.
-    """
-    gpuflag = (check_gpu.get_compute_capability(0) >= 3.0)
-    if gpuflag is False:
-        raise RuntimeError("Device does not have CUDA compute capability 3.0 or greater")
-    ng, nc = backend_pair
-
-    # edge case test
+def edge_cases_helper(be):
     np_ref = dict()
     inputs = [
         ("edges", np.array([2 ** -48, 2 ** 15], dtype=np.float32)),
@@ -109,21 +97,54 @@ def test_edge_cases(backend_pair):
     ]
     for tag, inp in inputs:
         np_ref[tag] = ref_hist(inp)
-        for be in [ng, nc]:
-            be_inp = be.array(inp)
-            be_hist = be_inp.hist(tag)
-            assert tensors_allclose(np_ref[tag], be_hist), tag + str(be)
+        be_inp = be.array(inp)
+        be_hist = be_inp.hist(tag)
+        assert tensors_allclose(np_ref[tag], be_hist), tag + str(be)
 
     # dump_hist_data test
-    for be in [ng, nc]:
-        be_hist_data, be_hist_map = be.dump_hist_data()
-        for tag, inp in inputs:
-            be_data = be_hist_data[be_hist_map[tag]]
-            assert tensors_allclose(np_ref[tag], be_data), tag + str(be)
+    be_hist_data, be_hist_map = be.dump_hist_data()
+    for tag, inp in inputs:
+        be_data = be_hist_data[be_hist_map[tag]]
+        assert tensors_allclose(np_ref[tag], be_data), tag + str(be)
 
 
 @pytest.mark.hasgpu
-def test_hist(nbin_offset_dim_dtype_inp, backend_pair):
+def test_gpu_edge_cases(backend_gpu):
+    """
+    Test several edge cases related to min/max bin, and rounding.
+
+    Also test backend dump_hist_data functionality.
+    """
+    gpuflag = (check_gpu.get_compute_capability(0) >= 3.0)
+    if gpuflag is False:
+        raise RuntimeError("Device does not have CUDA compute capability 3.0 or greater")
+    edge_cases_helper(backend_gpu)
+
+
+def test_cpu_edge_cases(backend_cpu):
+    """
+    Test several edge cases related to min/max bin, and rounding.
+
+    Also test backend dump_hist_data functionality.
+    """
+    edge_cases_helper(backend_cpu)
+
+
+def hist_helper(nbin_offset_dim_dtype_inp, be):
+    (nbins, offset), dim, dtype, (name, inp_gen) = nbin_offset_dim_dtype_inp
+
+    be.set_hist_buffers(nbins, offset)
+
+    np_inp = inp_gen(dim).astype(dtype)
+    np_hist = ref_hist(np_inp, nbins=nbins, offset=offset)
+
+    be_inp = be.array(np_inp, dtype=dtype)
+    be_hist = be_inp.hist(name)
+    assert tensors_allclose(np_hist, be_hist)
+
+
+@pytest.mark.hasgpu
+def test_gpu_hist(nbin_offset_dim_dtype_inp, backend_gpu):
     """
     Compare the nervanagpu and nervanacpu hist implementation to the reference
     implementation above.
@@ -131,20 +152,19 @@ def test_hist(nbin_offset_dim_dtype_inp, backend_pair):
     Parameterized test case, uses pytest_generate_test to enumerate dim_dtype_inp
     tuples that drive the test.
     """
-
-    (nbins, offset), dim, dtype, (name, inp_gen) = nbin_offset_dim_dtype_inp
-
     gpuflag = (check_gpu.get_compute_capability(0) >= 3.0)
     if gpuflag is False:
         raise RuntimeError("Device does not have CUDA compute capability 3.0 or greater")
 
-    ng, nc = backend_pair
-    ng.set_hist_buffers(nbins, offset)
-    nc.set_hist_buffers(nbins, offset)
+    hist_helper(nbin_offset_dim_dtype_inp, backend_gpu)
 
-    np_inp = inp_gen(dim).astype(dtype)
-    np_hist = ref_hist(np_inp, nbins=nbins, offset=offset)
-    for be in [ng, nc]:
-        be_inp = be.array(np_inp, dtype=dtype)
-        be_hist = be_inp.hist(name)
-        assert tensors_allclose(np_hist, be_hist)
+
+def test_cpu_hist(nbin_offset_dim_dtype_inp, backend_cpu):
+    """
+    Compare the nervanagpu and nervanacpu hist implementation to the reference
+    implementation above.
+
+    Parameterized test case, uses pytest_generate_test to enumerate dim_dtype_inp
+    tuples that drive the test.
+    """
+    hist_helper(nbin_offset_dim_dtype_inp, backend_cpu)
