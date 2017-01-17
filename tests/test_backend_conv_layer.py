@@ -130,7 +130,7 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.mark.hasgpu
-def test_conv_layer(fargs_tests, backend_pair):
+def test_gpu_conv_layer(fargs_tests, backend_pair):
 
     dtype = np.float32
     ng, nc = backend_pair
@@ -189,12 +189,8 @@ def test_conv_layer(fargs_tests, backend_pair):
     ngO, ngB, ngU = run_backend_conv(ng, conv_ng, beI, beF, beE, dtype)
     end_gpu = default_timer()
 
-    start_cpu = default_timer()
-    ncO, ncB, ncU = run_backend_conv(nc, conv_nc, beI, beF, beE, dtype)
-    end_cpu = default_timer()
-
-    neon_logger.display("gputime: %s, cputime %s" %
-                        (end_gpu - start_gpu, end_cpu - start_cpu))
+    neon_logger.display("gputime: %s" %
+                        (end_gpu - start_gpu))
 
     # ======numpy===========
     # cpu output arrays
@@ -211,39 +207,111 @@ def test_conv_layer(fargs_tests, backend_pair):
 
     for m in range(M):
         mt = m * str_d - pad_d
-
         for p in range(P):
             pr = p * str_h - pad_h
-
             for q in range(Q):
                 qs = q * str_w - pad_w
-
                 idx = pixel_indices(conv_nc, mt, pr, qs)
-
                 cpuO[:, m, p, q, :] = np.dot(cpuF.T, cpuI[idx, :])
-
                 cpuB[idx, :] += np.dot(cpuF, cpuE[:, m, p, q, :])
-
                 cpuU += np.dot(cpuI[idx, :], cpuE[:, m, p, q, :].T)
 
-    for op, ngA, ncA, cpuA, w in (
-            ("fprop", ngO, ncO, cpuO, Q),
-            ("bprop", ngB, ncB.reshape(dimI), cpuB[:-1, :].reshape(dimI), W),
-            ("update", ngU, ncU.reshape(dimF), cpuU.reshape(dimF), S)):
+    for op, ngA, cpuA, w in (
+            ("fprop", ngO, cpuO, Q),
+            ("bprop", ngB, cpuB[:-1, :].reshape(dimI), W),
+            ("update", ngU, cpuU.reshape(dimF), S)):
+
+        neon_logger.display(op)
+        ngAnp = ngA.get().astype(np.float32)
+        ngdif = cpuA - ngAnp
+        maxval = abs(cpuA).max()
+        ngmaxdif = abs(ngdif).max()
+        ngRatio = ngmaxdif / float(maxval)
+
+        assert ngRatio < 1e-5
+        assert allclose_with_out(ngA.get(), cpuA, rtol=0, atol=1e-3)
+
+
+def test_cpu_conv_layer(fargs_tests, backend_cpu):
+
+    dtype = np.float32
+    nc = backend_cpu
+
+    N, C, K = fargs_tests[0]
+    D, H, W = fargs_tests[1]
+    T, R, S = fargs_tests[2]
+    padding_d, padding_h, padding_w = fargs_tests[3]
+    strides_d, strides_h, strides_w = fargs_tests[4]
+
+    conv_nc = nc.conv_layer(
+        dtype,
+        N, C, K,
+        D, H, W,
+        T, R, S,
+        padding_d, padding_h, padding_w,
+        strides_d, strides_h, strides_w)
+
+    dimI = conv_nc.dimI
+    dimF = conv_nc.dimF
+    dimO = conv_nc.dimO
+
+    if any(np.array(dimO) <= 0):
+        return
+
+    # cpu input arrays
+    cpuI = np.random.uniform(-0.8, 0.8, slicable(dimI, 1)).astype(np.float32)
+    cpuF = np.random.uniform(0.0, 0.3, slicable(dimF)).astype(np.float32)
+    cpuE = np.random.uniform(-0.2, 0.2, dimO).astype(np.float32)
+    # zero pad the last row of cpu input for the sake of numpy
+    cpuI[-1, :] = 0.0
+
+    # =======CPU==========
+    beI = cpuI[:-1, :].reshape(dimI)
+    beF = cpuF.reshape(dimF)
+    beE = cpuE
+
+    start_cpu = default_timer()
+    ncO, ncB, ncU = run_backend_conv(nc, conv_nc, beI, beF, beE, dtype)
+    end_cpu = default_timer()
+
+    neon_logger.display("cputime %s" %
+                        (end_cpu - start_cpu))
+
+    # ======numpy===========
+    # cpu output arrays
+    cpuO = np.zeros(dimO, dtype=dtype)
+    cpuB = np.zeros(slicable(dimI, 1), dtype=dtype)
+    cpuU = np.zeros(slicable(dimF), dtype=dtype)
+
+    D, H, W = conv_nc.DHW
+    T, R, S = conv_nc.TRS
+    M, P, Q = conv_nc.MPQ
+
+    pad_d, pad_h, pad_w = conv_nc.padding
+    str_d, str_h, str_w = conv_nc.strides
+
+    for m in range(M):
+        mt = m * str_d - pad_d
+        for p in range(P):
+            pr = p * str_h - pad_h
+            for q in range(Q):
+                qs = q * str_w - pad_w
+                idx = pixel_indices(conv_nc, mt, pr, qs)
+                cpuO[:, m, p, q, :] = np.dot(cpuF.T, cpuI[idx, :])
+                cpuB[idx, :] += np.dot(cpuF, cpuE[:, m, p, q, :])
+                cpuU += np.dot(cpuI[idx, :], cpuE[:, m, p, q, :].T)
+
+    for op, ncA, cpuA, w in (
+            ("fprop", ncO, cpuO, Q),
+            ("bprop", ncB.reshape(dimI), cpuB[:-1, :].reshape(dimI), W),
+            ("update", ncU.reshape(dimF), cpuU.reshape(dimF), S)):
 
         neon_logger.display(op)
         ncAnp = ncA.get().astype(np.float32)
-        ngAnp = ngA.get().astype(np.float32)
         ncdif = cpuA - ncAnp
-        ngdif = cpuA - ngAnp
         maxval = abs(cpuA).max()
         ncmaxdif = abs(ncdif).max()
-        ngmaxdif = abs(ngdif).max()
         ncRatio = ncmaxdif / float(maxval)
-        ngRatio = ngmaxdif / float(maxval)
 
         assert ncRatio < 1e-5
-        assert ngRatio < 1e-5
-
         assert allclose_with_out(ncA.get(), cpuA, rtol=0, atol=1e-4)
-        assert allclose_with_out(ngA.get(), cpuA, rtol=0, atol=1e-3)

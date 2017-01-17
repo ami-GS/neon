@@ -67,12 +67,9 @@ def run_batched_dot(lib, I, E, W, X, dtype):
     return devO, devB, devU
 
 
-@pytest.mark.hasgpu
-def test_batched_dot(backend_pair_bench):
+def batched_dot_helper(be):
     np.set_printoptions(threshold=8192 * 4, linewidth=600,
                         formatter={'int': lambda x: "%2d" % x, 'float': lambda x: "%2.0f" % x})
-
-    ng, nc = backend_pair_bench
 
     dtype = np.float32  # np.float16 or np.float32
 
@@ -82,17 +79,26 @@ def test_batched_dot(backend_pair_bench):
     K = 768  # Output Features
 
     cpuI, cpuE, cpuW = setup_test_data(X, N, C, K, dtype)
-
-    ncO, ncB, ncU = run_batched_dot(nc, cpuI, cpuE, cpuW, X, dtype)
     npO, npB, npU = run_batched_dot(np, cpuI, cpuE, cpuW, X, dtype)
 
-    if ng.compute_capability > (5, 0):
-        ngO, ngB, ngU = run_batched_dot(ng, cpuI, cpuE, cpuW, X, dtype)
+    if "GPU" in str(be.__class__):
+        if be.compute_capability > (5, 0):
+            ngO, ngB, ngU = run_batched_dot(be, cpuI, cpuE, cpuW, X, dtype)
+            assert tensors_allclose(npO, ngO, rtol=0, atol=1e-3)
+            assert tensors_allclose(npB, ngB, rtol=0, atol=1e-3)
+            assert tensors_allclose(npU, ngU, rtol=0, atol=1e-3)
+    else:
+        ncO, ncB, ncU = run_batched_dot(be, cpuI, cpuE, cpuW, X, dtype)
+        assert tensors_allclose(npO, ncO, rtol=0, atol=1e-3)
+        assert tensors_allclose(npB, ncB, rtol=0, atol=1e-3)
+        assert tensors_allclose(npU, ncU, rtol=0, atol=1e-3)
 
-        assert tensors_allclose(npO, ngO, rtol=0, atol=1e-3)
-        assert tensors_allclose(npB, ngB, rtol=0, atol=1e-3)
-        assert tensors_allclose(npU, ngU, rtol=0, atol=1e-3)
 
-    assert tensors_allclose(npO, ncO, rtol=0, atol=1e-3)
-    assert tensors_allclose(npB, ncB, rtol=0, atol=1e-3)
-    assert tensors_allclose(npU, ncU, rtol=0, atol=1e-3)
+@pytest.mark.hasgpu
+def test_gpu_batched_dot(backend_gpu):
+    backend_gpu.bench = True
+    batched_dot_helper(backend_gpu)
+
+
+def test_cpu_batched_dot(backend_cpu):
+    batched_dot_helper(backend_cpu)
