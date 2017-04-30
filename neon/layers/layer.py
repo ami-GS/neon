@@ -1221,7 +1221,7 @@ class Activation(Layer):
             Tensor: output data
         """
         self.outputs = self.inputs = inputs
-        self.outputs[:] = self.transform(self.inputs)
+        self.outputs[:] = self.transform(self.inputs, inference)
         return self.outputs
 
     def bprop(self, error):

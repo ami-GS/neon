@@ -26,7 +26,7 @@ class Identity(Transform):
         """
         super(Identity, self).__init__(name)
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the input as output.
 
@@ -57,18 +57,25 @@ class Rectlin(Transform):
     Rectified Linear Unit (ReLu) activation function, :math:`f(x) = \max(x, 0)`.
     Can optionally set a slope which will make this a Leaky ReLu.
     """
-    def __init__(self, slope=0, name=None):
+    def __init__(self, slope=0, randomize=False, srange=(1./8, 1./3), name=None):
         """
         Class constructor.
 
         Args:
             slope (float, optional): Slope for negative domain. Defaults to 0.
+            randomize (bool): bool for enabling randomized Leaky ReLU. Default to False.
+            srange: slope range for Randomized Leaky ReLU. Default to 1./8 to 1./3
             name (string, optional): Name to assign this class instance.
         """
         super(Rectlin, self).__init__(name)
+        self.randomize = randomize
         self.slope = slope
+        if randomize:
+            if srange[0] >= srange[1] or srange[0] < 0 or 1 < srange[1] or len(srange) != 2:
+                raise ValueError("Invalid srange value or its length")
+            self.srange = srange
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the Exponential Linear activation
 
@@ -78,6 +85,11 @@ class Rectlin(Transform):
         Returns:
             Tensor or optree: output activation
         """
+        if self.randomize:
+            if inference:
+                self.slope = sum(self.srange)/2
+            else:
+                self.slope = self.be.rng.uniform(self.srange[0], self.srange[1])
         return self.be.maximum(x, 0) + self.slope * self.be.minimum(0, x)
 
     def bprop(self, x):
@@ -103,7 +115,7 @@ class Rectlinclip(Transform):
         self.xcut = xcut
         self.slope = slope
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         return self.be.minimum(self.be.maximum(x, 0) + self.slope * self.be.minimum(x, 0),
                                self.xcut)
 
@@ -129,7 +141,7 @@ class Explin(Transform):
         super(Explin, self).__init__(name)
         self.alpha = alpha
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the Exponential Linear activation
 
@@ -169,7 +181,7 @@ class Normalizer(Transform):
         super(Normalizer, self).__init__(name)
         self.divisor = divisor
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the normalized value.
 
@@ -209,7 +221,7 @@ class Softmax(Transform):
         super(Softmax, self).__init__(name)
         self.epsilon = epsilon
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the Softmax value.
 
@@ -246,7 +258,7 @@ class PixelwiseSoftmax(Transform):
         self.epsilon = epsilon
         self.c = c
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         y = x.reshape((self.c, -1))
         y[:] = (self.be.reciprocal(self.be.sum(self.be.exp(y - self.be.max(y, axis=0)), axis=0)) *
                 self.be.exp(y - self.be.max(y, axis=0)))
@@ -266,7 +278,7 @@ class Tanh(Transform):
         """
         super(Tanh, self).__init__(name)
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the hyperbolic tangent.
 
@@ -329,7 +341,7 @@ class Logistic(Transform):
         else:
             self.bprop_func = lambda x: x * (1.0 - x)
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         """
         Returns the sigmoidal activation.
 
@@ -367,7 +379,7 @@ class Sign(Transform):
     def __init__(self, name=None):
         super(Sign, self).__init__(name)
 
-    def __call__(self, x):
+    def __call__(self, x, inference=False):
         self.inputs = self.be.array(x.get())
         return self.be.binarize(x, x, stochastic=False)
 
